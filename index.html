@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EVE PI Planner — Локальная версия</title>
+    <title>EVE PI Planner — Мульти-файловая загрузка</title>
     <style>
         :root {
             --bg: #0f1923;
@@ -81,6 +81,32 @@
             border-radius: 3px;
             display: inline-block;
             border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .progress-container {
+            margin-bottom: 15px;
+            background: var(--surface);
+            padding: 10px 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        .progress-bar {
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-top: 3px;
         }
 
         .table-wrapper {
@@ -183,6 +209,11 @@
             color: #7ec850;
         }
 
+        .data-source.error {
+            background: #3a1a1a;
+            color: #ff4444;
+        }
+
         th.sorted-asc::after {
             content: ' ▲';
             font-size: 0.7em;
@@ -197,7 +228,15 @@
     <div class="container">
         <h1>🚀 Планетарное производство: мгновенный поиск</h1>
 
-        <div class="data-source" id="dataSource">✅ Данные загружены</div>
+        <div class="data-source" id="dataSource">⏳ Загрузка данных...</div>
+
+        <!-- Индикатор прогресса загрузки файлов -->
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-text" id="progressText">Загрузка файлов...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
 
         <div class="global-filters">
             <label>🎯 Ресурс:</label>
@@ -245,14 +284,34 @@
     </div>
 
     <script>
-        // ⚡ ВСТАВЬТЕ СЮДА СОДЕРЖИМОЕ ВАШЕГО data.json ВМЕСТО null
-        // Например: const EMBEDDED_DATA = [{"region":"Domain","constellation":"Ammold",...}];
-        const EMBEDDED_DATA = null;
+        // ==========================================================================
+        // СПИСОК ВСЕХ ЧАСТЕЙ ДАННЫХ:
+        // Укажите здесь имена ваших файлов (относительно index.html)
+        // Поддерживаются JSON и CSV файлы
+        // ==========================================================================
+        const DATA_FILES = [
+            'data_part1.json',
+            'data_part2.json',
+            'data_part3.json'
+            // Добавьте ещё файлы, если нужно, например:
+            // 'data_part4.json',
+            // 'data_part5.json',
+            // 'data.csv'  // можно и CSV
+        ];
+
+        // URL Google Таблицы (запасной вариант)
+        const GOOGLE_CSV_URL = 'https://docs.google.com/spreadsheets/d/1scYj1wvdz661kVNSD7LZUqBwVLjhpQL8fb5IH3_-mrs/export?format=csv';
 
         let allData = [];
         let resourceSet = new Set();
         let regionSet = new Set();
         let constellationSet = new Set();
+
+        // Индикаторы
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const dataSourceInfo = document.getElementById('dataSource');
 
         function getAbundanceCategory(value) {
             if (value >= 2.0) return 'veryhigh';
@@ -263,40 +322,152 @@
             return 'none';
         }
 
-        function processJSONData(jsonData) {
+        function updateProgress(current, total, fileName) {
+            const percent = Math.round((current / total) * 100);
+            progressFill.style.width = percent + '%';
+            progressText.textContent = `Загрузка файла ${current} из ${total}: ${fileName}`;
+        }
+
+        // Определяем тип файла по расширению и загружаем
+        async function loadFile(fileName) {
+            const response = await fetch(fileName);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const text = await response.text();
+            
+            // Определяем формат: JSON или CSV
+            if (fileName.toLowerCase().endsWith('.json')) {
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    throw new Error(`Ошибка парсинга JSON в файле ${fileName}: ${e.message}`);
+                }
+            } else {
+                // Считаем, что это CSV
+                return parseCSVToJSON(text);
+            }
+        }
+
+        function parseCSVToJSON(csv) {
+            const lines = csv.split('\n').filter(line => line.trim() !== '');
+            if (lines.length < 2) return [];
+
+            const headers = lines[0].split(',').map(h => h.trim().replace(/^"(.*)"$/, '$1'));
+            const idx = {
+                region: headers.findIndex(h => h.toLowerCase() === 'region'),
+                constellation: headers.findIndex(h => h.toLowerCase() === 'constellation'),
+                system: headers.findIndex(h => h.toLowerCase() === 'system'),
+                planet: headers.findIndex(h => h.toLowerCase() === 'planet'),
+                resource: headers.findIndex(h => h.toLowerCase() === 'resource'),
+                output: headers.findIndex(h => h.toLowerCase() === 'output'),
+                abundance: headers.findIndex(h => h.toLowerCase() === 'abundance')
+            };
+
+            const result = [];
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(',').map(c => c.trim().replace(/^"(.*)"$/, '$1'));
+                if (cols.length < headers.length) continue;
+                result.push({
+                    region: cols[idx.region] || '',
+                    constellation: cols[idx.constellation] || '',
+                    system: cols[idx.system] || '',
+                    planet: cols[idx.planet] || '',
+                    resource: cols[idx.resource] || '',
+                    output: cols[idx.output] || '',
+                    abundance: parseFloat(cols[idx.abundance]) || 0
+                });
+            }
+            return result;
+        }
+
+        // Загрузка всех файлов частями
+        async function loadAllParts() {
+            progressContainer.style.display = 'block';
             allData = [];
             resourceSet.clear();
             regionSet.clear();
             constellationSet.clear();
 
-            jsonData.forEach(item => {
-                const abundance = parseFloat(item.abundance) || 0;
-                const region = item.region || '';
-                const constellation = item.constellation || '';
-                const system = item.system || '';
-                const planet = item.planet || '';
-                const resource = item.resource || '';
-                const output = item.output || '';
+            const totalFiles = DATA_FILES.length;
+            let loadedCount = 0;
+            let totalRecords = 0;
 
-                if (!region || !system || !resource) return;
+            for (let i = 0; i < totalFiles; i++) {
+                const fileName = DATA_FILES[i];
+                updateProgress(i + 1, totalFiles, fileName);
 
-                allData.push({
-                    region,
-                    constellation,
-                    system,
-                    planet,
-                    resource,
-                    output,
-                    abundance,
-                    category: getAbundanceCategory(abundance)
+                try {
+                    const fileData = await loadFile(fileName);
+                    if (Array.isArray(fileData)) {
+                        // Обрабатываем каждую запись
+                        fileData.forEach(item => {
+                            const abundance = parseFloat(item.abundance) || 0;
+                            const region = item.region || '';
+                            const constellation = item.constellation || '';
+                            const system = item.system || '';
+                            const planet = item.planet || '';
+                            const resource = item.resource || '';
+                            const output = item.output || '';
+
+                            if (!region || !system || !resource) return;
+
+                            allData.push({
+                                region,
+                                constellation,
+                                system,
+                                planet,
+                                resource,
+                                output,
+                                abundance,
+                                category: getAbundanceCategory(abundance)
+                            });
+
+                            resourceSet.add(resource);
+                            regionSet.add(region);
+                            if (constellation) constellationSet.add(constellation);
+                        });
+                        loadedCount++;
+                        totalRecords += fileData.length;
+                    } else {
+                        console.warn(`Файл ${fileName} не содержит массив данных`);
+                    }
+                } catch (err) {
+                    console.error(`Ошибка загрузки ${fileName}:`, err);
+                    // Продолжаем со следующим файлом
+                }
+            }
+
+            progressContainer.style.display = 'none';
+            return { loadedCount, totalRecords };
+        }
+
+        // Запасной вариант: загрузка из Google Таблицы
+        async function loadFromGoogle() {
+            try {
+                const response = await fetch(GOOGLE_CSV_URL);
+                if (!response.ok) throw new Error('Google Таблица недоступна');
+                const csvText = await response.text();
+                const jsonData = parseCSVToJSON(csvText);
+                
+                jsonData.forEach(item => {
+                    const abundance = parseFloat(item.abundance) || 0;
+                    allData.push({
+                        ...item,
+                        abundance,
+                        category: getAbundanceCategory(abundance)
+                    });
+                    resourceSet.add(item.resource);
+                    regionSet.add(item.region);
+                    if (item.constellation) constellationSet.add(item.constellation);
                 });
-
-                resourceSet.add(resource);
-                regionSet.add(region);
-                if (constellation) constellationSet.add(constellation);
-            });
-
-            document.getElementById('stats').textContent = `Загружено записей: ${allData.length}`;
+                
+                return jsonData.length;
+            } catch (err) {
+                console.error('Ошибка загрузки из Google:', err);
+                return 0;
+            }
         }
 
         function populateSelects() {
@@ -430,13 +601,32 @@
             });
         }
 
-        function init() {
-            if (EMBEDDED_DATA && Array.isArray(EMBEDDED_DATA)) {
-                processJSONData(EMBEDDED_DATA);
+        async function init() {
+            // Пробуем загрузить локальные файлы
+            const { loadedCount, totalRecords } = await loadAllParts();
+
+            if (loadedCount > 0 && allData.length > 0) {
+                dataSourceInfo.textContent = `✅ Загружено ${loadedCount} файлов — ${allData.length} записей`;
+                dataSourceInfo.className = 'data-source';
+            } else {
+                // Запасной вариант: Google Таблица
+                dataSourceInfo.textContent = '⚠️ Локальные файлы не найдены, пробую Google Таблицу...';
+                dataSourceInfo.className = 'data-source';
+                
+                const googleRecords = await loadFromGoogle();
+                if (googleRecords > 0) {
+                    dataSourceInfo.textContent = `✅ Загружено из Google Таблицы — ${allData.length} записей`;
+                } else {
+                    dataSourceInfo.textContent = '❌ Не удалось загрузить данные ни из одного источника';
+                    dataSourceInfo.className = 'data-source error';
+                }
+            }
+
+            if (allData.length > 0) {
                 populateSelects();
                 applyAllFilters();
             } else {
-                document.getElementById('stats').textContent = '❌ Данные не найдены. Вставьте JSON в переменную EMBEDDED_DATA в коде файла.';
+                document.getElementById('stats').textContent = 'Нет данных';
             }
         }
 
