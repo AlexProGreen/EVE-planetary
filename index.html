@@ -384,49 +384,46 @@
         try {
             const fileData = await loadFile(fileName);
             if (Array.isArray(fileData) && fileData.length > 0) {
-                // 🛠️ ДИАГНОСТИКА: смотрим структуру первого объекта
-                console.log('📁 Файл:', fileName);
-                console.log('🔑 Ключи первого объекта:', Object.keys(fileData[0]));
-                console.log('📝 Пример первой записи:', JSON.stringify(fileData[0], null, 2));
+                // ДИАГНОСТИКА: ищем все возможные названия колонки с планетой
+                const firstItem = fileData[0];
+                console.log('🔑 Все ключи первого объекта:', Object.keys(firstItem));
                 
-                fileData.forEach((item, index) => {
-                    // Пробуем найти значение добычи по разным возможным названиям
-                    const abundance = parseFloat(
-                        item.abundance || 
-                        item.Abundance || 
-                        item.value || 
-                        item.Value || 
-                        item.output_value || 
-                        item.OutputValue ||
-                        item.добыча ||
-                        0
-                    );
+                // Ищем ключ, содержащий "planet" (любой регистр)
+                const planetKey = Object.keys(firstItem).find(k => 
+                    k.toLowerCase().includes('planet')
+                );
+                console.log('🪐 Найденный ключ для планеты:', planetKey);
+                console.log('📝 Пример значения планеты:', firstItem[planetKey]);
+                
+                fileData.forEach(item => {
+                    const yieldValue = parseFloat(item.output) || parseFloat(item.abundance) || 0;
+                    const region = item.region || '';
+                    const system = item.system || '';
                     
-                    const region = item.region || item.Region || '';
-                    const system = item.system || item.System || '';
-                    const planet = item.planet || item.Planet || item.planet_name || item.PlanetName || '';
-                    const resource = item.resource || item.Resource || '';
-                    const output = item.output || item.Output || '';
-
+                    // Ищем название планеты: Planet Name, planet_name, planetName, planet
+                    const planet = item['Planet Name'] || item['planet name'] || item['PlanetName'] || item['planet_name'] || item['planetName'] || item.planet || '';
+                    
+                    const resource = item.resource || '';
+                    
                     if (!region || !system || !resource) return;
-
-                    // Выводим первые 3 записи для проверки
-                    if (index < 3) {
-                        console.log(`Запись #${index}: region="${region}", system="${system}", planet="${planet}", resource="${resource}", output="${output}", abundance=${abundance}`);
-                    }
 
                     allData.push({
                         region,
-                        constellation: item.constellation || item.Constellation || '',
+                        constellation: item.constellation || '',
                         system,
                         planet,
                         resource,
-                        output,
-                        abundance
+                        yield: yieldValue
                     });
 
                     resourceSet.add(resource);
                     regionSet.add(region);
+                });
+                
+                // Выводим пример первых трёх записей
+                console.log('📊 Первые 3 записи после обработки:');
+                allData.slice(0, 3).forEach((row, i) => {
+                    console.log(`  #${i}: планета="${row.planet}", ресурс="${row.resource}", добыча=${row.yield}`);
                 });
             }
         } catch (err) {
@@ -434,8 +431,7 @@
         }
     }
     
-    console.log(`✅ Загружено: ${allData.length} записей`);
-    console.log(`📊 Пример финальной записи:`, allData[0]);
+    console.log(`✅ Всего загружено: ${allData.length} записей`);
 }
 
         async function loadFromGoogle() {
