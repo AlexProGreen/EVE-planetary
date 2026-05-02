@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVE PI Planner — Лучшая добыча</title>
+    <style>
+        :root {
+            --bg: #0f1923;
+            --surface: #1a2a3a;
+            --text: #cdd6e0;
+            --accent: #47a9b0;
+            --border: #2a3f4f;
+            --gold: #d4af37;
+        }
+        
+        * { box-sizing: border-box; }
+        
+        body {
+            margin: 0;
+            padding: 20px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: var(--accent);
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+            letter-spacing: 1px;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+
+        /* АНИМАЦИЯ ЗАГРУЗКИ */
+        .loader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+        }
+        
+        .loader-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .loader-ring {
+            width: 80px;
+            height: 80px;
+            border: 3px solid rgba(71, 169, 176, 0.15);
+            border-top: 3px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 25px;
+        }
+        
+        .loader-pulse {
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(0.3); opacity: 0.3; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+        }
+        
+        .loader-text {
+            color: var(--accent);
+            font-size: 1.1em;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            animation: flicker 2s ease-in-out infinite;
+        }
+        
+        @keyframes flicker {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        .loader-progress {
+            width: 220px;
+            height: 3px;
+            background: rgba(71, 169, 176, 0.15);
+            border-radius: 3px;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+        
+        .loader-progress-bar {
+            height: 100%;
+            background: var(--accent);
+            width: 0%;
+            transition: width 0.4s ease;
+            border-radius: 3px;
+        }
+        
+        .loader-detail {
+            color: #7f8c8d;
+            font-size: 0.8em;
+            margin-top: 10px;
+            letter-spacing: 1px;
+        }
+
+        /* ОСНОВНОЙ ИНТЕРФЕЙС */
+        .controls {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            animation: fadeInUp 0.6s ease;
+        }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1;
+            min-width: 180px;
+        }
+        
+        .control-group label {
+            font-size: 0.8em;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+        
+        .control-group select, .control-group input {
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.95em;
+            transition: border-color 0.2s;
+        }
+        
+        .control-group select:hover, .control-group select:focus,
+        .control-group input:hover, .control-group input:focus {
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(71, 169, 176, 0.1);
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+            white-space: nowrap;
+            height: 40px;
+        }
+        
+        .btn:hover {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            background: var(--surface);
+            border-radius: 8px;
+            font-size: 0.9em;
+            animation: fadeInUp 0.6s ease 0.2s both;
+        }
+        
+        .record-count {
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        
+        .view-mode {
+            color: var(--gold);
+            font-weight: 600;
+        }
+
+        .table-wrapper {
+            background: var(--surface);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            animation: fadeInUp 0.6s ease 0.3s both;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background: #1e3040;
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #7f8c8d;
+            cursor: pointer;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            transition: background 0.2s;
+        }
+        
+        th:hover {
+            background: #243850;
+        }
+        
+        th.sorted-asc::after {
+            content: ' ▲';
+            color: var(--accent);
+        }
+        
+        th.sorted-desc::after {
+            content: ' ▼';
+            color: var(--accent);
+        }
+        
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(42, 63, 79, 0.5);
+            font-size: 0.95em;
+            animation: fadeIn 0.4s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        tr:hover td {
+            background: rgba(71, 169, 176, 0.05);
+        }
+        
+        .region-name { color: #8ab4f8; }
+        .constellation-name { color: #b39ddb; }
+        .system-name { color: var(--accent); }
+        .planet-name { color: #e0e0e0; font-weight: 500; }
+        .best-resource { color: var(--gold); font-weight: 600; }
+        .yield-value {
+            font-family: 'Consolas', monospace;
+            color: var(--gold);
+            font-weight: 600;
+            font-size: 1em;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #7f8c8d;
+        }
+        
+        .empty-state .icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .controls { flex-direction: column; }
+            .control-group { min-width: 100%; }
+            table { font-size: 0.85em; }
+            th, td { padding: 8px 10px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- ЭКРАН ЗАГРУЗКИ -->
+    <div class="loader-overlay" id="loaderOverlay">
+        <div class="loader-ring">
+            <div class="loader-pulse"></div>
+        </div>
+        <div class="loader-text">Загрузка данных</div>
+        <div class="loader-progress">
+            <div class="loader-progress-bar" id="loaderProgressBar"></div>
+        </div>
+        <div class="loader-detail" id="loaderDetail">Подключение к источникам...</div>
+    </div>
+
+    <!-- ОСНОВНОЙ ИНТЕРФЕЙС -->
+    <div class="container">
+        <h1>🚀 Планетарное производство</h1>
+        <p class="subtitle">Найдите лучшие планеты для добычи ресурсов в EVE Online</p>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>🌌 Регион</label>
+                <select id="regionSelect">
+                    <option value="">Все регионы</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>✨ Созвездие</label>
+                <select id="constellationSelect" disabled>
+                    <option value="">Все созвездия</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>☀️ Система</label>
+                <select id="systemSelect" disabled>
+                    <option value="">Все системы</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>🎯 Ресурс</label>
+                <select id="resourceSelect">
+                    <option value="">Все ресурсы</option>
+                </select>
+            </div>
+            <div class="control-group" style="flex: 0.5; min-width: 100px;">
+                <label>🔢 Топ</label>
+                <select id="topLimit">
+                    <option value="0">Все</option>
+                    <option value="10">Топ-10</option>
+                    <option value="25">Топ-25</option>
+                    <option value="50">Топ-50</option>
+                    <option value="100">Топ-100</option>
+                </select>
+            </div>
+            <button class="btn" id="resetBtn">🔄 Сбросить</button>
+        </div>
+
+        <div class="stats-bar">
+            <span class="record-count" id="recordCount">Загрузка...</span>
+            <span class="view-mode" id="viewMode"></span>
+        </div>
+
+        <div class="table-wrapper">
+            <table id="resultsTable">
+                <thead>
+                    <tr>
+                        <th>Регион</th>
+                        <th>Созвездие</th>
+                        <th>Система</th>
+                        <th>Планета</th>
+                        <th>Ресурс</th>
+                        <th>Добыча</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="6" class="empty-state"><span class="icon">⏳</span><br>Загрузка данных...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================================================
+        // КОНФИГУРАЦИЯ
+        // ==========================================================================
+        const DATA_FILES = [
+            'data_part1.json',
+            'data_part2.json'
+        ];
+
+        // ==========================================================================
+        // СОСТОЯНИЕ
+        // ==========================================================================
+        let allData = [];
+        let resourceSet = new Set();
+        let regionSet = new Set();
+        let constellationSet = new Set();
+        let systemSet = new Set();
+
+        const loaderOverlay = document.getElementById('loaderOverlay');
+        const loaderProgressBar = document.getElementById('loaderProgressBar');
+        const loaderDetail = document.getElementById('loaderDetail');
+
+        // ==========================================================================
+        // ЗАГРУЗКА ДАННЫХ
+        // ==========================================================================
+        async function loadFile(fileName) {
+            const response = await fetch(fileName);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const text = await response.text();
+            return JSON.parse(text);
+        }
+
+        async function loadAllParts() {
+            allData = [];
+            resourceSet.clear();
+            regionSet.clear();
+            constellationSet.clear();
+            systemSet.clear();
+
+            const totalFiles = DATA_FILES.length;
+
+            for (let i = 0; i < totalFiles; i++) {
+                const fileName = DATA_FILES[i];
+                const progress = Math.round(((i + 1) / totalFiles) * 100);
+                
+                loaderProgressBar.style.width = progress + '%';
+                loaderDetail.textContent = `Загрузка ${fileName}...`;
+                
+                try {
+                    const fileData = await loadFile(fileName);
+                    if (Array.isArray(fileData)) {
+                        fileData.forEach(item => {
+                            const yieldValue = parseFloat(item.yield) || parseFloat(item.output) || 0;
+                            const region = item.region || '';
+                            const constellation = item.constellation || '';
+                            const system = item.system || '';
+                            const planet = item.planet || '';
+                            const resource = item.resource || '';
+                            
+                            if (!region || !system || !resource) return;
+
+                            allData.push({
+                                region,
+                                constellation,
+                                system,
+                                planet,
+                                resource,
+                                yield: yieldValue
+                            });
+
+                            resourceSet.add(resource);
+                            regionSet.add(region);
+                            if (constellation) constellationSet.add(constellation);
+                            systemSet.add(system);
+                        });
+                    }
+                } catch (err) {
+                    console.error(`Ошибка загрузки ${fileName}:`, err);
+                    loaderDetail.textContent = `Ошибка: ${fileName}`;
+                    throw err;
+                }
+            }
+        }
+
+        // ==========================================================================
+        // ЗАПОЛНЕНИЕ ФИЛЬТРОВ
+        // ==========================================================================
+        function populateSelects() {
+            const regionSelect = document.getElementById('regionSelect');
+            regionSelect.innerHTML = '<option value="">Все регионы</option>';
+            [...regionSet].sort().forEach(region => {
+                const opt = document.createElement('option');
+                opt.value = region;
+                opt.textContent = region;
+                regionSelect.appendChild(opt);
+            });
+
+            updateConstellationSelect([...constellationSet]);
+            updateSystemSelect([...systemSet]);
+
+            const resourceSelect = document.getElementById('resourceSelect');
+            resourceSelect.innerHTML = '<option value="">Все ресурсы</option>';
+            [...resourceSet].sort().forEach(resource => {
+                const opt = document.createElement('option');
+                opt.value = resource;
+                opt.textContent = resource;
+                resourceSelect.appendChild(opt);
+            });
+        }
+
+        function updateConstellationSelect(constellations) {
+            const select = document.getElementById('constellationSelect');
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">Все созвездия</option>';
+            [...constellations].sort().forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c;
+                opt.textContent = c;
+                select.appendChild(opt);
+            });
+            select.value = currentValue;
+            select.disabled = false;
+        }
+
+        function updateSystemSelect(systems) {
+            const select = document.getElementById('systemSelect');
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">Все системы</option>';
+            [...systems].sort().forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                select.appendChild(opt);
+            });
+            select.value = currentValue;
+            select.disabled = false;
+        }
+
+        function updateCascade(source) {
+            const regionFilter = document.getElementById('regionSelect').value;
+            const constellationFilter = document.getElementById('constellationSelect').value;
+
+            let filtered = allData;
+
+            if (regionFilter) {
+                filtered = filtered.filter(row => row.region === regionFilter);
+            }
+
+            if (source === 'region') {
+                document.getElementById('constellationSelect').value = '';
+                document.getElementById('systemSelect').value = '';
+                
+                const constellations = [...new Set(filtered.map(row => row.constellation).filter(Boolean))];
+                updateConstellationSelect(constellations);
+                
+                const systems = [...new Set(filtered.map(row => row.system).filter(Boolean))];
+                updateSystemSelect(systems);
+            }
+
+            if (source === 'constellation') {
+                document.getElementById('systemSelect').value = '';
+                
+                if (constellationFilter) {
+                    filtered = filtered.filter(row => row.constellation === constellationFilter);
+                }
+                
+                const systems = [...new Set(filtered.map(row => row.system).filter(Boolean))];
+                updateSystemSelect(systems);
+            }
+
+            applyView();
+        }
+
+        // ==========================================================================
+        // ЛОГИКА ПОИСКА
+        // ==========================================================================
+        function applyView() {
+            const regionFilter = document.getElementById('regionSelect').value;
+            const constellationFilter = document.getElementById('constellationSelect').value;
+            const systemFilter = document.getElementById('systemSelect').value;
+            const resourceFilter = document.getElementById('resourceSelect').value;
+            const topLimit = parseInt(document.getElementById('topLimit').value);
+
+            let filtered = allData;
+
+            if (regionFilter) {
+                filtered = filtered.filter(row => row.region === regionFilter);
+            }
+            if (constellationFilter) {
+                filtered = filtered.filter(row => row.constellation === constellationFilter);
+            }
+            if (systemFilter) {
+                filtered = filtered.filter(row => row.system === systemFilter);
+            }
+            if (resourceFilter) {
+                filtered = filtered.filter(row => row.resource === resourceFilter);
+            }
+
+            // Всегда сортируем по убыванию добычи
+            filtered.sort((a, b) => (b.yield || 0) - (a.yield || 0));
+
+            // Применяем топ-N, если не "Все"
+            let results;
+            if (topLimit > 0) {
+                results = filtered.slice(0, topLimit);
+            } else {
+                results = filtered;
+            }
+
+            renderTable(results);
+        }
+
+        // ==========================================================================
+        // ОТРИСОВКА
+        // ==========================================================================
+        function renderTable(data) {
+            const tbody = document.querySelector('#resultsTable tbody');
+            
+            if (data.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <span class="icon">🔍</span><br>
+                            Нет данных для отображения
+                        </td>
+                    </tr>`;
+            } else {
+                tbody.innerHTML = data.map((row, index) => `
+                    <tr style="animation-delay: ${index * 0.01}s">
+                        <td><span class="region-name">${row.region}</span></td>
+                        <td><span class="constellation-name">${row.constellation}</span></td>
+                        <td><span class="system-name">${row.system}</span></td>
+                        <td><span class="planet-name">${row.planet}</span></td>
+                        <td><span class="best-resource">${row.resource}</span></td>
+                        <td><span class="yield-value">${(row.yield || 0).toFixed(2)}</span></td>
+                    </tr>
+                `).join('');
+            }
+
+            const filters = [];
+            if (document.getElementById('regionSelect').value) filters.push(document.getElementById('regionSelect').value);
+            if (document.getElementById('constellationSelect').value) filters.push(document.getElementById('constellationSelect').value);
+            if (document.getElementById('systemSelect').value) filters.push(document.getElementById('systemSelect').value);
+            if (document.getElementById('resourceSelect').value) filters.push(document.getElementById('resourceSelect').value);
+            
+            const viewLabel = filters.length > 0 
+                ? `Добыча: ${filters.join(' → ')}`
+                : 'Добыча во всём мире';
+            
+            document.getElementById('recordCount').textContent = 
+                `Показано: ${data.length} записей`;
+            document.getElementById('viewMode').textContent = viewLabel;
+        }
+
+        // ==========================================================================
+        // СОРТИРОВКА ТАБЛИЦЫ
+        // ==========================================================================
+        function initSorting() {
+            const table = document.getElementById('resultsTable');
+            const headers = table.querySelectorAll('th');
+            const columnMap = {
+                'Регион': 0,
+                'Созвездие': 1,
+                'Система': 2,
+                'Планета': 3,
+                'Ресурс': 4,
+                'Добыча': 5
+            };
+
+            headers.forEach(th => {
+                th.addEventListener('click', () => {
+                    const headerText = th.textContent.trim();
+                    const dataIndex = columnMap[headerText];
+                    if (dataIndex === undefined) return;
+
+                    const tbody = table.querySelector('tbody');
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    if (rows.length === 0 || rows[0].querySelector('.empty-state')) return;
+
+                    headers.forEach(h => h.classList.remove('sorted-asc', 'sorted-desc'));
+
+                    const isAsc = !th.classList.contains('sorted-asc');
+                    th.classList.add(isAsc ? 'sorted-asc' : 'sorted-desc');
+
+                    const factor = isAsc ? 1 : -1;
+
+                    rows.sort((a, b) => {
+                        let aVal = a.children[dataIndex]?.textContent.trim() || '';
+                        let bVal = b.children[dataIndex]?.textContent.trim() || '';
+                        
+                        if (dataIndex === 5) {
+                            return (parseFloat(aVal) - parseFloat(bVal)) * factor;
+                        } else {
+                            return aVal.localeCompare(bVal) * factor;
+                        }
+                    });
+
+                    rows.forEach(row => tbody.appendChild(row));
+                });
+            });
+        }
+
+        // ==========================================================================
+        // СОБЫТИЯ
+        // ==========================================================================
+        function bindEvents() {
+            document.getElementById('regionSelect').addEventListener('change', () => updateCascade('region'));
+            document.getElementById('constellationSelect').addEventListener('change', () => updateCascade('constellation'));
+            document.getElementById('systemSelect').addEventListener('change', applyView);
+            document.getElementById('resourceSelect').addEventListener('change', applyView);
+            document.getElementById('topLimit').addEventListener('change', applyView);
+            
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                document.getElementById('regionSelect').value = '';
+                document.getElementById('constellationSelect').value = '';
+                document.getElementById('systemSelect').value = '';
+                document.getElementById('resourceSelect').value = '';
+                document.getElementById('topLimit').value = '0';
+                
+                updateConstellationSelect([...constellationSet]);
+                updateSystemSelect([...systemSet]);
+                
+                applyView();
+            });
+        }
+
+        // ==========================================================================
+        // ЗАВЕРШЕНИЕ ЗАГРУЗКИ
+        // ==========================================================================
+        function hideLoader() {
+            loaderProgressBar.style.width = '100%';
+            loaderDetail.textContent = 'Данные загружены ✓';
+            
+            setTimeout(() => {
+                loaderOverlay.classList.add('hidden');
+            }, 400);
+        }
+
+        function showLoaderError(message) {
+            loaderDetail.textContent = '❌ ' + message;
+            loaderDetail.style.color = '#ff4444';
+            loaderProgressBar.style.background = '#ff4444';
+        }
+
+        // ==========================================================================
+        // ИНИЦИАЛИЗАЦИЯ
+        // ==========================================================================
+        async function init() {
+            try {
+                await loadAllParts();
+                
+                if (allData.length > 0) {
+                    hideLoader();
+                    populateSelects();
+                    applyView();
+                } else {
+                    showLoaderError('Файлы не содержат данных');
+                }
+            } catch (err) {
+                showLoaderError(err.message);
+            }
+        }
+
+        init();
+        bindEvents();
+        setTimeout(initSorting, 300);
+    </script>
+</body>
+</html>
